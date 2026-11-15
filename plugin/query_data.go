@@ -792,6 +792,17 @@ func (d *QueryData) streamRows(ctx context.Context, rowChan chan *proto.Row, don
 			// nil row means we are done streaming
 			if row == nil {
 				log.Printf("[INFO] streamRows - nil row, stop streaming (%s)", d.connectionCallId)
+				// A list, hydrate or transform error is sent on errorChan before
+				// rowChan is closed (or before the nil row of a failed transform).
+				// When both channels are ready, select picks one at random, so
+				// check errorChan before ending as a success.
+				select {
+				case err := <-d.errorChan:
+					log.Printf("[TRACE] streamRows error chan has an error at the nil row: %v", err)
+					close(doneChan)
+					return err
+				default:
+				}
 				return nil
 			}
 			// if we are caching stream this row to the cache - this will stream it to all subscribers

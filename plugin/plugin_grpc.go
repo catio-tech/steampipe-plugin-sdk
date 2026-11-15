@@ -322,6 +322,17 @@ func (p *Plugin) execute(req *proto.ExecuteRequest, stream row_stream.Sender) (e
 	close(outputChan)
 	close(errorChan)
 
+	// Collect the errors that the loop did not read. Each connection goroutine
+	// sends its error before outputWg.Done, so every error is buffered before the
+	// nil row is sent. When both channels are ready, select picks one at random:
+	// the loop can take the nil row first and leave an error in the buffer.
+	for err := range errorChan {
+		if !error_helpers.IsContextCancelledError(err) {
+			log.Printf("[WARN] error channel received (drain) %s", err.Error())
+		}
+		errors = append(errors, err)
+	}
+
 	return helpers.CombineErrors(errors...)
 }
 
